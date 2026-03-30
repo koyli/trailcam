@@ -9,8 +9,8 @@ from bleak import BleakClient
 
 # Define the UUIDs based on your service/characteristic shorthand
 # Note: Full 128-bit UUIDs are often required if these are custom
-SERVICE_UUID = "0000ffb1-0000-1000-8000-00805f9b34fb"
-#CHAR_UUID    = "0000000c-0000-1000-8000-00805f9b34fb"
+#SERVICE_UUID = 
+CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
 
 async def run(address):
     print(f"Searching for and connecting to {address}...")
@@ -23,9 +23,9 @@ async def run(address):
                 # Convert text payload to bytes
                 payload = "TCWAKEUP".encode('utf-8')
                 
-                print(f"Sending payload to {SERVICE_UUID}...")
+                print(f"Sending payload to {CHAR_UUID}...")
                 # write_gatt_char sends data to the device
-                await client.write_gatt_char(SERVICE_UUID, payload)
+                await client.write_gatt_char(CHAR_UUID, payload)
                 
                 print("Payload sent successfully.")
             else:
@@ -133,7 +133,7 @@ def process_images():
         data = response.json()
 
         images = data["data"]
-
+        counter = 0
         for image in images:
             try:
                 image_id = image["id"]
@@ -153,12 +153,13 @@ def process_images():
                 cam_reset()
                 response = requests.get(f'{delete_url}{image_id}/{filetype}')
                 print(f'Received and deleted {filename}')
-                
+                counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
                 print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
         # Example: If the JSON has a key named 'items'
         # for item in data.get('items', []):
         #     print(item)
+        print(f'Total {counter} images/movies saved')
 
     except HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
@@ -167,20 +168,46 @@ def process_images():
         print(traceback.print_exc())
 
         
+def drop_wifi(ssid):
+    cmd = f"nmcli c down {ssid}"
 
+    connect_result = run_command(cmd)
+
+    if connect_result.returncode == 0:
+        print(f"Successfully dropped connection to {ssid}!")
+    else:
+        print(f"Failed to disconnect: {connect_result.stderr.strip()}")
+        sys.exit(1)
+
+
+def restore_wifi(ssid):
+    cmd = f"nmcli c up {ssid}"
+
+    connect_result = run_command(cmd)
+
+    if connect_result.returncode == 0:
+        print(f"Successfully connected to {ssid}!")
+    else:
+        print(f"Failed to connect: {connect_result.stderr.strip()}")
+        sys.exit(1)
+    
+        
 if __name__ == "__main__":
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         # Optional: Pass password as a command line argument
-        pwd = sys.argv[2] if len(sys.argv) > 2 else None
-        device_address = sys.argv[1]
-
+        pwd = sys.argv[3] if len(sys.argv) > 3 else None
+        device_address = sys.argv[2]
+        
         asyncio.run(run(device_address))
+
+        drop_wifi(sys.argv[1])
         connect_to_cam_wifi(pwd)
         process_images()
-
+        restore_wifi(sys.argv[1])
         
     else:
-        print("Usage: python ble_sender.py <Device_Address> <cam pw> <wifi to restore>")
+        print("Usage: python ble_sender.py  <nm wifi connection to stop and restore> <Device_Address> <cam pw>")
+        
         sys.exit(1)
 
