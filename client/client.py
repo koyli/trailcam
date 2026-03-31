@@ -1,0 +1,186 @@
+#!/usr/bin/python
+import traceback
+import requests
+from requests.exceptions import HTTPError, ChunkedEncodingError
+
+import asyncio
+import sys
+from bleak import BleakClient
+
+# Define the UUIDs based on your service/characteristic shorthand
+# Note: Full 128-bit UUIDs are often required if these are custom
+SERVICE_UUID = "0000ffb1-0000-1000-8000-00805f9b34fb"
+#CHAR_UUID    = "0000000c-0000-1000-8000-00805f9b34fb"
+
+async def run(address):
+    print(f"Searching for and connecting to {address}...")
+    
+    try:
+        async with BleakClient(address) as client:
+            if client.is_connected:
+                print(f"Connected to {address}")
+                
+                # Convert text payload to bytes
+                payload = "TCWAKEUP".encode('utf-8')
+                
+                print(f"Sending payload to {SERVICE_UUID}...")
+                # write_gatt_char sends data to the device
+                await client.write_gatt_char(SERVICE_UUID, payload)
+                
+                print("Payload sent successfully.")
+            else:
+                print(f"Failed to connect to {address}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+
+import subprocess
+import time
+import sys
+
+def run_command(command):
+    """Helper to run shell commands and return output."""
+    result = subprocess.run(command, capture_output=True, text=True, shell=True)
+    return result
+
+def connect_to_cam_wifi(password=None):
+
+    print("Pause to enable Wi-Fi network activation...")
+    time.sleep(15) # Give the radio a moment to populate results
+    print("Scanning for Wi-Fi networks...")
+    # Rescan to ensure the list is fresh
+    run_command("nmcli device wifi rescan")
+    time.sleep(2) # Give the radio a moment to populate results
+
+    # List available Wi-Fi SSIDs
+    scan_result = run_command("nmcli -t -f SSID device wifi list")
+    
+    if scan_result.returncode != 0:
+        print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
+        return
+
+    # Split output into a list of SSIDs and filter for those starting with 'CAM'
+    ssids = scan_result.stdout.strip().split('\n')
+    target_ssid = next((s for s in ssids if s.startswith("CAM")), None)
+
+    if not target_ssid:
+        print("No Wi-Fi network starting with 'CAM' was found.")
+        return
+
+    print(f"Found network: {target_ssid}. Attempting to connect...")
+
+    # Construct the connection command
+    if password:
+        cmd = f"nmcli device wifi connect '{target_ssid}' password '{password}'"
+    else:
+        cmd = f"nmcli device wifi connect '{target_ssid}'"
+
+    connect_result = run_command(cmd)
+
+    if connect_result.returncode == 0:
+        print(f"Successfully connected to {target_ssid}!")
+    else:
+        print(f"Failed to connect: {connect_result.stderr.strip()}")
+        sys.exit(1)
+        
+base_url = "http://192.168.8.1:8080"
+
+
+def cam_reset():
+    reset_url = base_url + "/cmd/standby/reset"
+    try:
+        response = requests.get(reset_url)
+        data = response.json()
+
+    except HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        print(traceback.print_exc())
+    
+def get_cam_id():
+    info_url = base_url + "/cmd/getSetting"
+    try:
+        response = requests.get(info_url)
+        data = response.json()
+        return data["data"]["camera_name"]
+    except HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        print(traceback.print_exc())
+        
+    
+    
+def process_images():
+    url = base_url + "/list/detail/backward/900000/60"
+    thumb_url = base_url + "/thumb/"
+    file_url = base_url + "/file/"
+    delete_url = base_url + "/cmd/delete/"
+
+    cam_reset()
+    camera = get_cam_id()
+    
+    try:
+        # 1. Send the GET request
+        response = requests.get(url)
+        
+        # 2. Check if the request was successful (status code 200)
+        # This raises an exception for 4XX or 5XX errors
+        response.raise_for_status()
+
+        # 3. Parse the JSON response into a Python dictionary or list
+        data = response.json()
+
+        images = data["data"]
+
+        for image in images:
+            try:
+                image_id = image["id"]
+                image_date = image["date"]
+                image_type = image["type"]
+                filetype = "JPG" if image_type == 1 else "MP4"
+                compressed_date = image_date.replace("-", "").replace(" ","").replace(":","")
+                filename = f'{camera}_{compressed_date}_{image_id}.{filetype}'
+                thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
+                
+                response = requests.get(f'{thumb_url}{image_id}/{filetype}')
+                with open(thumbname, "wb") as f:
+                    f.write(response.content)
+                    response = requests.get(f'{file_url}{image_id}/{filetype}')
+                with open(filename, "wb") as f:
+                    f.write(response.content)
+                cam_reset()
+                response = requests.get(f'{delete_url}{image_id}/{filetype}')
+                print(f'Received and deleted {filename}')
+                
+            except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
+                print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
+        # Example: If the JSON has a key named 'items'
+        # for item in data.get('items', []):
+        #     print(item)
+
+    except HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        print(traceback.print_exc())
+
+        
+
+if __name__ == "__main__":
+
+    if len(sys.argv) > 1:
+        # Optional: Pass password as a command line argument
+        pwd = sys.argv[2] if len(sys.argv) > 2 else None
+        device_address = sys.argv[1]
+
+        asyncio.run(run(device_address))
+        connect_to_cam_wifi(pwd)
+        process_images()
+
+        
+    else:
+        print("Usage: python ble_sender.py <Device_Address> <cam pw> <wifi to restore>")
+        sys.exit(1)
+
