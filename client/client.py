@@ -204,7 +204,8 @@ if __name__ == "__main__":
         
         drop_wifi(sys.argv[1])
 
-        if asyncio.run_until_complete(run(device_address)):
+        loop = asyncio.get_event_loop()
+        if loop.run_until_complete(asyncio.run(device_address)):
             if connect_to_cam_wifi(pwd):
                 process_images()
                 
