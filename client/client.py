@@ -28,11 +28,13 @@ async def run(address):
                 await client.write_gatt_char(CHAR_UUID, payload)
                 
                 print("Payload sent successfully.")
+                return True
             else:
                 print(f"Failed to connect to {address}")
+                return False
     except Exception as e:
         print(f"An error occurred: {e}")
-
+        return False
 
 import subprocess
 import time
@@ -79,9 +81,10 @@ def connect_to_cam_wifi(password=None):
 
     if connect_result.returncode == 0:
         print(f"Successfully connected to {target_ssid}!")
+        return True
     else:
         print(f"Failed to connect: {connect_result.stderr.strip()}")
-        sys.exit(1)
+        return False
         
 base_url = "http://192.168.8.1:8080"
 
@@ -201,14 +204,14 @@ if __name__ == "__main__":
         
         drop_wifi(sys.argv[1])
 
-        asyncio.run(run(device_address))
-
-        connect_to_cam_wifi(pwd)
-        process_images()
+        if asyncio.run_until_complete(run(device_address)):
+            if connect_to_cam_wifi(pwd):
+                process_images()
+                
+        
         restore_wifi(sys.argv[1])
         
     else:
         print("Usage: python ble_sender.py  <nm wifi connection to stop and restore> <Device_Address> <cam pw>")
         
         sys.exit(1)
-
