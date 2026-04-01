@@ -199,9 +199,10 @@ if __name__ == "__main__":
         pwd = sys.argv[3] if len(sys.argv) > 3 else None
         device_address = sys.argv[2]
         
+        drop_wifi(sys.argv[1])
+
         asyncio.run(run(device_address))
 
-        drop_wifi(sys.argv[1])
         connect_to_cam_wifi(pwd)
         process_images()
         restore_wifi(sys.argv[1])
