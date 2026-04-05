@@ -48,7 +48,7 @@ def run_command(command):
 
 def connect_to_cam_wifi(device, password=None):
 
-    device_string = " ifname {device}" if device else ""
+    device_string = f" ifname {device}" if device else ""
 
     print("Pause to enable Wi-Fi network activation...")
     time.sleep(15) # Give the radio a moment to populate results
