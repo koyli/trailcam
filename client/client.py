@@ -17,7 +17,7 @@ async def run(bt_local_id, address):
     print(f"Searching for and connecting to {address}...")
     
     try:
-        async with BleakClient(address) as client:
+        async with BleakClient(address, adapter=bt_local_id) as client:
             if client.is_connected:
                 print(f"Connected to {address}")
                 
