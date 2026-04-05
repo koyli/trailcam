@@ -2,6 +2,7 @@
 import traceback
 import requests
 from requests.exceptions import HTTPError, ChunkedEncodingError
+import argparse
 
 import asyncio
 import sys
@@ -198,7 +199,6 @@ def restore_wifi(ssid, devid):
     
         
 if __name__ == "__main__":
-import argparse
 
 def main():
     # Initialize the parser
