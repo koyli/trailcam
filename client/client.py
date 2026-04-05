@@ -45,7 +45,9 @@ def run_command(command):
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
     return result
 
-def connect_to_cam_wifi(password=None):
+def connect_to_cam_wifi(device, password=None):
+
+    device_string = " ifname {device}" if device else ""
 
     print("Pause to enable Wi-Fi network activation...")
     time.sleep(15) # Give the radio a moment to populate results
@@ -55,7 +57,7 @@ def connect_to_cam_wifi(password=None):
     time.sleep(2) # Give the radio a moment to populate results
 
     # List available Wi-Fi SSIDs
-    scan_result = run_command("nmcli -t -f SSID device wifi list")
+    scan_result = run_command(f"nmcli -t -f SSID device wifi list {device_string}")
     
     if scan_result.returncode != 0:
         print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
@@ -73,9 +75,9 @@ def connect_to_cam_wifi(password=None):
 
     # Construct the connection command
     if password:
-        cmd = f"nmcli device wifi connect '{target_ssid}' password '{password}'"
+        cmd = f"nmcli device wifi connect '{target_ssid}' password '{password}' {device_string}"
     else:
-        cmd = f"nmcli device wifi connect '{target_ssid}'"
+        cmd = f"nmcli device wifi connect '{target_ssid}' {device_string}"
 
     connect_result = run_command(cmd)
 
@@ -183,7 +185,7 @@ def drop_wifi(ssid):
         sys.exit(1)
 
 
-def restore_wifi(ssid):
+def restore_wifi(ssid, devid):
     cmd = f"nmcli c up {ssid}"
 
     connect_result = run_command(cmd)
@@ -196,22 +198,68 @@ def restore_wifi(ssid):
     
         
 if __name__ == "__main__":
+import argparse
 
-    if len(sys.argv) > 2:
-        # Optional: Pass password as a command line argument
-        pwd = sys.argv[3] if len(sys.argv) > 3 else None
-        device_address = sys.argv[2]
-        
-        drop_wifi(sys.argv[1])
+def main():
+    # Initialize the parser
+    parser = argparse.ArgumentParser(
+        description="Network Interface Configuration Script",
+        epilog="Example: python script.py -p mySecretPassword --ssid MyHomeWiFi"
+    )
 
-        if asyncio.run(run(device_address)):
-            if connect_to_cam_wifi(pwd):
-                process_images()
-                
+    # --- Mandatory Arguments ---
+    # We use 'required=True' to ensure the user provides the password
+    parser.add_argument(
+        "-p", "--password", 
+        required=True, 
+        help="The camera WiFi password (Mandatory)"
+    )
+
+    # --- Optional Arguments ---
+    parser.add_argument(
+        "-b", "--bt-id", 
+        help="Bluetooth interface ID (e.g., hci0)"
+    )
+
+    # --- Optional Arguments ---
+    parser.add_argument(
+        "-d", "--device-id", 
+        help="Bluetooth device ID (e.g., mac of remote bluetooth, or name)"
+    )
+    
+    parser.add_argument(
+        "-w", "--wifi-id", 
+        help="WiFi interface ID (e.g., wlan0)"
+    )
+    
+    parser.add_argument(
+        "-s", "--ssid", 
+        help="The existing WiFi SSID/Network name"
+    )
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Accessing the values
+    print(f"--- Configuration Received ---")
+    print(f"WiFi Password: {args.password}")
+    print(f"Bluetooth ID:  {args.bt_id if args.bt_id else 'Not provided'}")
+    print(f"WiFi ID:       {args.wifi_id if args.wifi_id else 'Not provided'}")
+    print(f"WiFi SSID:     {args.ssid if args.ssid else 'Not provided'}")
+
+
+    if args.ssid:
+        drop_wifi(args.ssid)
+
+    if asyncio.run(run(args.bt_id, args.device_id)):
+        if connect_to_cam_wifi(args.wifi_id, args.password):
+            process_images()
+            
         
-        restore_wifi(sys.argv[1])
+    if args.ssid:
+        restore_wifi(args.ssid, args.wifi_id)
         
-    else:
-        print("Usage: python ble_sender.py  <nm wifi connection to stop and restore> <Device_Address> <cam pw>")
-        
-        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()    
