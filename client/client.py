@@ -13,7 +13,7 @@ from bleak import BleakClient
 #SERVICE_UUID = 
 CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
 
-async def run(address):
+async def run(bt_local_id, address):
     print(f"Searching for and connecting to {address}...")
     
     try:
