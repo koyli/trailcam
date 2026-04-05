@@ -198,8 +198,6 @@ def restore_wifi(ssid, devid):
         sys.exit(1)
     
         
-if __name__ == "__main__":
-
 def main():
     # Initialize the parser
     parser = argparse.ArgumentParser(
