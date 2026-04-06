@@ -161,7 +161,7 @@ def process_images():
                     f.write(response.content)
                 cam_reset()
                 response = requests.get(f'{delete_url}{image_id}/{filetype}')
-                print(f'Received and deleted {filename}')
+                print(f'Received and deleted {filename}', flush=True)
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
                 print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
