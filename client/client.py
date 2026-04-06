@@ -55,7 +55,7 @@ def connect_to_cam_wifi(device, password=None):
     print("Scanning for Wi-Fi networks...")
     # Rescan to ensure the list is fresh
     run_command(f"nmcli device wifi rescan {device_string}")
-    time.sleep(2) # Give the radio a moment to populate results
+    time.sleep(10) # Give the radio a moment to populate results
 
     # List available Wi-Fi SSIDs
     cmd = f"nmcli -t -f SSID device wifi list {device_string}"
