@@ -51,11 +51,11 @@ def connect_to_cam_wifi(device, password=None):
     device_string = f" ifname {device}" if device else ""
 
     print("Pause to enable Wi-Fi network activation...")
-    time.sleep(15) # Give the radio a moment to populate results
+    time.sleep(10) 
     print("Scanning for Wi-Fi networks...")
     # Rescan to ensure the list is fresh
     run_command(f"nmcli device wifi rescan {device_string}")
-    time.sleep(10) # Give the radio a moment to populate results
+    time.sleep(15) # Give the radio a moment to populate results
 
     # List available Wi-Fi SSIDs
     cmd = f"nmcli -t -f SSID device wifi list {device_string}"
@@ -100,7 +100,7 @@ def cam_reset():
     try:
         response = requests.get(reset_url)
         data = response.json()
-
+        
     except HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
     except Exception as err:
