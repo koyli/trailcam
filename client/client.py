@@ -160,14 +160,14 @@ def process_images():
                 filename = f'{camera}_{compressed_date}_{image_id}.{filetype}'
                 thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
                 
-                response = requests.get(f'{thumb_url}{image_id}/{filetype}')
+                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 10)
                 with open(thumbname, "wb") as f:
                     f.write(response.content)
-                    response = requests.get(f'{file_url}{image_id}/{filetype}')
+                response = requests.get(f'{file_url}{image_id}/{filetype}', timeout = 10)
                 with open(filename, "wb") as f:
                     f.write(response.content)
                 cam_reset()
-                response = requests.get(f'{delete_url}{image_id}/{filetype}')
+                response = requests.get(f'{delete_url}{image_id}/{filetype}', timeout = 10)
                 print(f'Received and deleted {filename}', flush=True)
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
