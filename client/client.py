@@ -53,28 +53,34 @@ def connect_to_cam_wifi(device, password=None):
     print("Pause to enable Wi-Fi network activation...")
     time.sleep(10) 
     print("Scanning for Wi-Fi networks...")
+    retry = 0
+    while retry < 4:
+        
     # Rescan to ensure the list is fresh
-    run_command(f"nmcli device wifi rescan {device_string}")
-    time.sleep(15) # Give the radio a moment to populate results
+        run_command(f"nmcli device wifi rescan {device_string}")
+        time.sleep(15) # Give the radio a moment to populate results
 
-    # List available Wi-Fi SSIDs
-    cmd = f"nmcli -t -f SSID device wifi list {device_string}"
-    scan_result = run_command(cmd)
-    if scan_result.returncode != 0:
-        print(cmd)
-        print(scan_result)
-        print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
-        return
+        # List available Wi-Fi SSIDs
+        cmd = f"nmcli -t -f SSID device wifi list {device_string}"
+        scan_result = run_command(cmd)
+        if scan_result.returncode != 0:
+            print(cmd)
+            print(scan_result)
+            print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
+            return
 
-    # Split output into a list of SSIDs and filter for those starting with 'CAM'
-    ssids = scan_result.stdout.strip().split('\n')
-    target_ssid = next((s for s in ssids if s.startswith("CAM")), None)
+        # Split output into a list of SSIDs and filter for those starting with 'CAM'
+        ssids = scan_result.stdout.strip().split('\n')
+        target_ssid = next((s for s in ssids if s.startswith("CAM")), None)
+        
+        if not target_ssid:
+            print(f"No Wi-Fi network starting with 'CAM' was found (retry {retry}).")
+            print(scan_result.stdout)
+        else:
+            break
 
     if not target_ssid:
-        print("No Wi-Fi network starting with 'CAM' was found.")
-        print(scan_result.stdout)
         return
-
     print(f"Found network: {target_ssid}. Attempting to connect...")
 
     # Construct the connection command
