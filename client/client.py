@@ -78,6 +78,7 @@ def connect_to_cam_wifi(device, password=None):
             print(scan_result.stdout)
         else:
             break
+        retry += 1
 
     if not target_ssid:
         return
