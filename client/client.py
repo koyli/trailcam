@@ -11,8 +11,28 @@ from bleak import BleakClient
 # Define the UUIDs based on your service/characteristic shorthand
 # Note: Full 128-bit UUIDs are often required if these are custom
 #SERVICE_UUID = 
-CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
 
+
+async def g_e7(client):
+    payload = "TCWAKEUP".encode('utf-8')
+    CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
+                
+    print(f"Sending payload to {CHAR_UUID}...")
+    # write_gatt_char sends data to the device
+    await client.write_gatt_char(CHAR_UUID, payload)
+    
+    print("Payload sent successfully.")
+
+async def g_e8(client):
+    payload = "AT+WAKEPULSE=10\r\n".encode('utf-8')
+    CHAR_UUID    = "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
+    print(f"Sending payload to {CHAR_UUID}...")
+    # write_gatt_char sends data to the device
+    await client.write_gatt_char(CHAR_UUID, payload)
+    
+    print("Payload sent successfully.")
+    
+    
 async def run(bt_local_id, address):
     print(f"Searching for and connecting to {address}...")
     
@@ -20,15 +40,14 @@ async def run(bt_local_id, address):
         async with BleakClient(address, adapter=bt_local_id, timeout=30.0) as client:
             if client.is_connected:
                 print(f"Connected to {address}")
-                
+                name = client.name
+                print(f"name is {client.name}")
                 # Convert text payload to bytes
-                payload = "TCWAKEUP".encode('utf-8')
-                
-                print(f"Sending payload to {CHAR_UUID}...")
-                # write_gatt_char sends data to the device
-                await client.write_gatt_char(CHAR_UUID, payload)
-                
-                print("Payload sent successfully.")
+
+                if name.endswith("G_E8"):
+                    await g_e8(client)
+                else:
+                    await g_e7(client)
                 return True
             else:
                 print(f"Failed to connect to {address}")
