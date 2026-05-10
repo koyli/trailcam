@@ -6,6 +6,7 @@ import argparse
 
 import asyncio
 import sys
+import platform
 from bleak import BleakClient, BleakScanner
 
 # Define the UUIDs based on your service/characteristic shorthand
@@ -81,8 +82,12 @@ def run_command(command):
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
     return result
 
-def connect_to_cam_wifi(device, password=None):
+def is_macos():
+    """Check if the operating system is macOS."""
+    return platform.system() == "Darwin"
 
+def connect_to_cam_wifi_linux(device, password=None):
+    """Connect to camera WiFi on Linux using nmcli."""
     device_string = f" ifname {device}" if device else ""
 
     print("Pause to enable Wi-Fi network activation...")
@@ -102,7 +107,7 @@ def connect_to_cam_wifi(device, password=None):
             print(cmd)
             print(scan_result)
             print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
-            return
+            return False
 
         # Split output into a list of SSIDs and filter for those starting with 'CAM'
         ssids = scan_result.stdout.strip().split('\n')
@@ -116,7 +121,7 @@ def connect_to_cam_wifi(device, password=None):
         retry += 1
 
     if not target_ssid:
-        return
+        return False
     print(f"Found network: {target_ssid}. Attempting to connect...")
 
     # Construct the connection command
@@ -133,6 +138,68 @@ def connect_to_cam_wifi(device, password=None):
     else:
         print(f"Failed to connect: {connect_result.stderr.strip()}")
         return False
+
+def connect_to_cam_wifi_macos(device, password=None):
+    """Connect to camera WiFi on macOS using networksetup."""
+    print("Pause to enable Wi-Fi network activation...")
+    time.sleep(10)
+    print("Scanning for Wi-Fi networks...")
+    
+    # Use airport command to scan for networks
+    retry = 0
+    while retry < 4:
+        # Rescan for networks
+        run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -z")
+        time.sleep(2)
+        
+        # List available networks
+        scan_result = run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s")
+        
+        if scan_result.returncode != 0:
+            print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
+            return False
+        
+        # Parse output to find networks starting with 'CAM'
+        lines = scan_result.stdout.strip().split('\n')
+        target_ssid = None
+        for line in lines:
+            if line.strip().startswith("CAM"):
+                target_ssid = line.strip().split()[0]
+                break
+        
+        if not target_ssid:
+            print(f"No Wi-Fi network starting with 'CAM' was found (retry {retry}).")
+        else:
+            break
+        retry += 1
+    
+    if not target_ssid:
+        return False
+    
+    print(f"Found network: {target_ssid}. Attempting to connect...")
+    
+    # Connect to the network using networksetup
+    if password:
+        cmd = f"networksetup -setairportnetwork en0 '{target_ssid}' '{password}'"
+    else:
+        cmd = f"networksetup -setairportnetwork en0 '{target_ssid}'"
+    
+    connect_result = run_command(cmd)
+    
+    if connect_result.returncode == 0:
+        print(f"Successfully connected to {target_ssid}!")
+        return True
+    else:
+        print(f"Failed to connect: {connect_result.stderr.strip()}")
+        return False
+
+def connect_to_cam_wifi(device, password=None):
+    """Platform-agnostic function to connect to camera WiFi."""
+    if is_macos():
+        return connect_to_cam_wifi_macos(device, password)
+    else:
+        return connect_to_cam_wifi_linux(device, password)
+
         
 base_url = "http://192.168.8.1:8080"
 
@@ -218,29 +285,67 @@ def process_images():
         print(f"An error occurred: {err}")
         print(traceback.print_exc())
 
-        
-def drop_wifi(ssid):
+def drop_wifi_linux(ssid):
+    """Disconnect from WiFi on Linux."""
     cmd = f"nmcli c down {ssid}"
-
     connect_result = run_command(cmd)
 
     if connect_result.returncode == 0:
         print(f"Successfully dropped connection to {ssid}!")
+        return True
     else:
         print(f"Failed to disconnect: {connect_result.stderr.strip()}")
-        sys.exit(1)
+        return False
 
+def drop_wifi_macos(ssid):
+    """Disconnect from WiFi on macOS by turning off Wi-Fi."""
+    cmd = "networksetup -setairportpower en0 off"
+    connect_result = run_command(cmd)
 
-def restore_wifi(ssid, devid):
+    if connect_result.returncode == 0:
+        print(f"Successfully dropped Wi-Fi connection!")
+        return True
+    else:
+        print(f"Failed to disconnect: {connect_result.stderr.strip()}")
+        return False
+
+def drop_wifi(ssid):
+    """Platform-agnostic function to disconnect from WiFi."""
+    if is_macos():
+        return drop_wifi_macos(ssid)
+    else:
+        return drop_wifi_linux(ssid)
+
+def restore_wifi_linux(ssid, devid):
+    """Reconnect to WiFi on Linux."""
     cmd = f"nmcli c up {ssid}"
-
     connect_result = run_command(cmd)
 
     if connect_result.returncode == 0:
         print(f"Successfully connected to {ssid}!")
+        return True
     else:
         print(f"Failed to connect: {connect_result.stderr.strip()}")
-        sys.exit(1)
+        return False
+
+def restore_wifi_macos(ssid, devid):
+    """Reconnect to WiFi on macOS by turning on Wi-Fi."""
+    cmd = "networksetup -setairportpower en0 on"
+    connect_result = run_command(cmd)
+
+    if connect_result.returncode == 0:
+        print(f"Successfully restored Wi-Fi connection!")
+        return True
+    else:
+        print(f"Failed to connect: {connect_result.stderr.strip()}")
+        return False
+
+def restore_wifi(ssid, devid):
+    """Platform-agnostic function to restore WiFi connection."""
+    if is_macos():
+        return restore_wifi_macos(ssid, devid)
+    else:
+        return restore_wifi_linux(ssid, devid)
     
         
 def main():
