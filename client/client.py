@@ -139,24 +139,74 @@ def connect_to_cam_wifi_linux(device, password=None):
         print(f"Failed to connect: {connect_result.stderr.strip()}")
         return False
 
+def connect_to_cam_wifi_macos_networksetup(device, password=None):
+    """Fallback: Connect to camera WiFi on macOS using only networksetup (no airport scanning)."""
+    print("Using networksetup-only method to connect to camera WiFi...")
+    print("Pause to enable Wi-Fi network activation...")
+    time.sleep(10)
+    
+    # Assuming the camera WiFi network name is known or we try common patterns
+    # Try to find CAM networks by attempting connection
+    retry = 0
+    while retry < 4:
+        print(f"Attempting to connect to camera WiFi network (attempt {retry + 1}/4)...")
+        
+        # Try common camera WiFi patterns
+        for cam_pattern in ["CAM", "CAM_WIFI", "TRAIL_CAM"]:
+            if password:
+                cmd = f"networksetup -setairportnetwork en0 '{cam_pattern}' '{password}'"
+            else:
+                cmd = f"networksetup -setairportnetwork en0 '{cam_pattern}'"
+            
+            connect_result = run_command(cmd)
+            
+            if connect_result.returncode == 0:
+                print(f"Successfully connected to {cam_pattern}!")
+                return True
+            
+        time.sleep(5)
+        retry += 1
+    
+    print("Failed to connect using networksetup method")
+    return False
+
 def connect_to_cam_wifi_macos(device, password=None):
     """Connect to camera WiFi on macOS using networksetup."""
     print("Pause to enable Wi-Fi network activation...")
     time.sleep(10)
     print("Scanning for Wi-Fi networks...")
     
+    # Try to find airport command
+    airport_paths = [
+        "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
+        "/usr/local/bin/airport",
+        "airport"
+    ]
+    
+    airport_cmd = None
+    for path in airport_paths:
+        result = run_command(f"which {path}" if path == "airport" else f"test -f {path}")
+        if result.returncode == 0:
+            airport_cmd = path
+            break
+    
+    if not airport_cmd:
+        print("Warning: airport command not found, trying networksetup only method...")
+        return connect_to_cam_wifi_macos_networksetup(device, password)
+    
     # Use airport command to scan for networks
     retry = 0
     while retry < 4:
-        # Rescan for networks
-        run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -z")
+        # Try to rescan for networks
+        run_command(f"{airport_cmd} -z")
         time.sleep(2)
         
         # List available networks
-        scan_result = run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s")
+        scan_result = run_command(f"{airport_cmd} -s")
         
         if scan_result.returncode != 0:
-            print("Error: Could not scan for Wi-Fi. Is your Wi-Fi turned on?")
+            print(f"Error scanning Wi-Fi: {scan_result.stderr}")
+            print(f"Stdout: {scan_result.stdout}")
             return False
         
         # Parse output to find networks starting with 'CAM'
@@ -169,6 +219,7 @@ def connect_to_cam_wifi_macos(device, password=None):
         
         if not target_ssid:
             print(f"No Wi-Fi network starting with 'CAM' was found (retry {retry}).")
+            print(f"Available networks: {scan_result.stdout}")
         else:
             break
         retry += 1
