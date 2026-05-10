@@ -1,8 +1,12 @@
 #!/usr/bin/python
 import traceback
+import re
 import requests
 from requests.exceptions import HTTPError, ChunkedEncodingError
 import argparse
+
+import plistlib
+
 
 import asyncio
 import sys
@@ -34,7 +38,7 @@ async def g_e8(client):
     print("Payload sent successfully.")
 
 async def scan(bt_local_id):
-    devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 30)
+    devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 10)
     print(f"\nFound {len(devices)} devices:")
     print("-" * 40)
     
@@ -43,17 +47,33 @@ async def scan(bt_local_id):
         name = device.name if device.name else "Unknown/No Name"
         print(f"Address: {device.address} | Name: {name}")
     return devices;
-    
+
+
+
+
 async def run(bt_local_id, address, wifi_id, password):
     devices = await scan(bt_local_id)
     print(f"Searching for and connecting to {address}...")
 
     devices = filter(lambda x : (x.name and x.name.startswith(address)) or x.address.startswith(address), devices)
-
     for device in devices:
         try:
-            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
+            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=10.0) as client:
                 if client.is_connected:
+                    if is_macos():
+                        check = run_command("system_profiler SPBluetoothDataType")
+                        print(f"{check.stdout.strip()}")
+                        print(fr'{device.name}:\s+Address: (.+)$')
+                        r = re.compile(fr'{device.name}:\s+Address: (.+)$', re.MULTILINE)
+                        m = r.search(check.stdout)
+                        if m is None:
+                            print("mac not found")
+                        else:
+                            print (m.group(1))
+                        addr = m.group(1)
+                    else:
+                        addr = client.address
+                                 
                     print(f"Connected to {address}")
                     name = client.name
                     print(f"name is {client.name}")
@@ -66,7 +86,7 @@ async def run(bt_local_id, address, wifi_id, password):
                 else:
                     print(f"Failed to connect to {address}")
 
-                if connect_to_cam_wifi(wifi_id, password):
+                if connect_to_cam_wifi(wifi_id, addr, password):
                     process_images()
 
         except Exception as e:
@@ -86,7 +106,7 @@ def is_macos():
     """Check if the operating system is macOS."""
     return platform.system() == "Darwin"
 
-def connect_to_cam_wifi_linux(device, password=None):
+def connect_to_cam_wifi_linux(device, cam_mac, password=None):
     """Connect to camera WiFi on Linux using nmcli."""
     device_string = f" ifname {device}" if device else ""
 
@@ -139,7 +159,7 @@ def connect_to_cam_wifi_linux(device, password=None):
         print(f"Failed to connect: {connect_result.stderr.strip()}")
         return False
 
-def connect_to_cam_wifi_macos_networksetup(device, password=None):
+def connect_to_cam_wifi_macos_networksetup(device, cam_mac, password=None):
     """Fallback: Connect to camera WiFi on macOS using only networksetup (no airport scanning)."""
     print("Using networksetup-only method to connect to camera WiFi...")
     
@@ -155,11 +175,13 @@ def connect_to_cam_wifi_macos_networksetup(device, password=None):
     retry = 0
     while retry < 4:
         print(f"Attempting to connect to camera WiFi network (attempt {retry + 1}/4)...")
-        
+
         # Try common camera WiFi patterns
-        for cam_pattern in ["CAM", "CAM_WIFI", "TRAIL_CAM"]:
+        for cam_pattern in [f'CAM8Z8_{cam_mac.replace(":","")}']:
+            
             if password:
                 cmd = f"sudo networksetup -setairportnetwork en0 '{cam_pattern}' '{password}'"
+                print(cmd)
             else:
                 cmd = f"sudo networksetup -setairportnetwork en0 '{cam_pattern}'"
             
@@ -210,7 +232,7 @@ def connect_to_cam_wifi_macos_networksetup(device, password=None):
     print("Failed to connect using networksetup method")
     return False
 
-def connect_to_cam_wifi_macos(device, password=None):
+def connect_to_cam_wifi_macos(device, cam_mac, password=None):
     """Connect to camera WiFi on macOS using networksetup."""
     
     # First, make sure WiFi is turned on
@@ -237,7 +259,7 @@ def connect_to_cam_wifi_macos(device, password=None):
     
     if not airport_cmd:
         print("Warning: airport command not found, trying networksetup only method...")
-        return connect_to_cam_wifi_macos_networksetup(device, password)
+        return connect_to_cam_wifi_macos_networksetup(device, cam_mac, password)
     
     # Use airport command to scan for networks
     retry = 0
@@ -326,12 +348,12 @@ def connect_to_cam_wifi_macos(device, password=None):
         print(f"Command was: {cmd}")
         return False
 
-def connect_to_cam_wifi(device, password=None):
+def connect_to_cam_wifi(device, cam_mac, password=None):
     """Platform-agnostic function to connect to camera WiFi."""
     if is_macos():
-        return connect_to_cam_wifi_macos(device, password)
+        return connect_to_cam_wifi_macos(device, cam_mac, password)
     else:
-        return connect_to_cam_wifi_linux(device, password)
+        return connect_to_cam_wifi_linux(device, cam_mac, password)
 
         
 base_url = "http://192.168.8.1:8080"
