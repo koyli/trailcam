@@ -5,8 +5,6 @@ import requests
 from requests.exceptions import HTTPError, ChunkedEncodingError
 import argparse
 
-import plistlib
-
 
 import asyncio
 import sys
@@ -38,7 +36,7 @@ async def g_e8(client):
     print("Payload sent successfully.")
 
 async def scan(bt_local_id):
-    devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 10)
+    devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 30)
     print(f"\nFound {len(devices)} devices:")
     print("-" * 40)
     
@@ -49,8 +47,6 @@ async def scan(bt_local_id):
     return devices;
 
 
-
-
 async def run(bt_local_id, address, wifi_id, password):
     devices = await scan(bt_local_id)
     print(f"Searching for and connecting to {address}...")
@@ -58,7 +54,7 @@ async def run(bt_local_id, address, wifi_id, password):
     devices = filter(lambda x : (x.name and x.name.startswith(address)) or x.address.startswith(address), devices)
     for device in devices:
         try:
-            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=10.0) as client:
+            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
                 if client.is_connected:
                     if is_macos():
                         check = run_command("system_profiler SPBluetoothDataType")
@@ -243,110 +239,8 @@ def connect_to_cam_wifi_macos(device, cam_mac, password=None):
     time.sleep(5)
     print("Scanning for Wi-Fi networks...")
     
-    # Try to find airport command
-    airport_paths = [
-        "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
-        "/usr/local/bin/airport",
-        "airport"
-    ]
+    return connect_to_cam_wifi_macos_networksetup(device, cam_mac, password)
     
-    airport_cmd = None
-    for path in airport_paths:
-        result = run_command(f"which {path}" if path == "airport" else f"test -f {path}")
-        if result.returncode == 0:
-            airport_cmd = path
-            break
-    
-    if not airport_cmd:
-        print("Warning: airport command not found, trying networksetup only method...")
-        return connect_to_cam_wifi_macos_networksetup(device, cam_mac, password)
-    
-    # Use airport command to scan for networks
-    retry = 0
-    while retry < 4:
-        # Try to rescan for networks
-        run_command(f"{airport_cmd} -z")
-        time.sleep(3)
-        
-        # List available networks
-        scan_result = run_command(f"{airport_cmd} -s")
-        
-        if scan_result.returncode != 0:
-            print(f"Error scanning Wi-Fi: {scan_result.stderr}")
-            print(f"Stdout: {scan_result.stdout}")
-            print(f"Retrying scan... (attempt {retry + 1}/4)")
-            retry += 1
-            time.sleep(3)
-            continue
-        
-        # Parse output to find networks starting with 'CAM'
-        lines = scan_result.stdout.strip().split('\n')
-        target_ssid = None
-        for line in lines:
-            if line.strip().startswith("CAM"):
-                target_ssid = line.strip().split()[0]
-                break
-        
-        if not target_ssid:
-            print(f"No Wi-Fi network starting with 'CAM' was found (retry {retry}).")
-            print(f"Available networks: {scan_result.stdout}")
-            time.sleep(3)
-        else:
-            break
-        retry += 1
-    
-    if not target_ssid:
-        return False
-    
-    print(f"Found network: {target_ssid}. Attempting to connect...")
-    
-    # Connect to the network using networksetup
-    if password:
-        cmd = f"sudo networksetup -setairportnetwork en0 '{target_ssid}' '{password}'"
-    else:
-        cmd = f"sudo networksetup -setairportnetwork en0 '{target_ssid}'"
-    
-    connect_result = run_command(cmd)
-    
-    if connect_result.returncode == 0:
-        print(f"Successfully connected to {target_ssid}!")
-        time.sleep(5)
-        
-        # Check current WiFi connection
-        wifi_check = run_command("networksetup -getairportnetwork en0")
-        print(f"Current WiFi: {wifi_check.stdout.strip()}")
-        
-        # Check IP address
-        ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
-        print(f"IP Address: {ip_check.stdout.strip()}")
-        
-        # If still no IP, wait longer and try again
-        if not ip_check.stdout.strip():
-            print("No IP assigned yet, waiting longer...")
-            time.sleep(10)
-            ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
-            print(f"IP Address after wait: {ip_check.stdout.strip()}")
-        
-        # Try to ping the camera
-        ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
-        if ping_result.returncode == 0:
-            print("Camera is reachable!")
-            print(f"Connection successful!")
-        else:
-            print("Warning: Camera not reachable yet, waiting longer...")
-            time.sleep(10)
-            # Try ping again
-            ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
-            if ping_result.returncode == 0:
-                print("Camera is now reachable!")
-            else:
-                print("Still cannot reach camera")
-        print(f"WiFi should now be ready")
-        return True
-    else:
-        print(f"Failed to connect: {connect_result.stderr.strip()}")
-        print(f"Command was: {cmd}")
-        return False
 
 def connect_to_cam_wifi(device, cam_mac, password=None):
     """Platform-agnostic function to connect to camera WiFi."""
