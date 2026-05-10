@@ -6,7 +6,7 @@ import argparse
 
 import asyncio
 import sys
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 
 # Define the UUIDs based on your service/characteristic shorthand
 # Note: Full 128-bit UUIDs are often required if these are custom
@@ -31,30 +31,46 @@ async def g_e8(client):
     await client.write_gatt_char(CHAR_UUID, payload)
     
     print("Payload sent successfully.")
-    
-    
-async def run(bt_local_id, address):
-    print(f"Searching for and connecting to {address}...")
-    
-    try:
-        async with BleakClient(address, adapter=bt_local_id, timeout=30.0) as client:
-            if client.is_connected:
-                print(f"Connected to {address}")
-                name = client.name
-                print(f"name is {client.name}")
-                # Convert text payload to bytes
 
-                if name.endswith("G_E8"):
-                    await g_e8(client)
+async def scan(bt_local_id):
+    devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 30)
+    print(f"\nFound {len(devices)} devices:")
+    print("-" * 40)
+    
+    for device in devices:
+        # Some devices don't broadcast a name, so we provide a default
+        name = device.name if device.name else "Unknown/No Name"
+        print(f"Address: {device.address} | Name: {name}")
+    return devices;
+    
+async def run(bt_local_id, address, wifi_id, password):
+    devices = await scan(bt_local_id)
+    print(f"Searching for and connecting to {address}...")
+
+    devices = filter(lambda x : (x.name and x.name.startswith(address)) or x.address.startswith(address), devices)
+
+    for device in devices:
+        try:
+            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
+                if client.is_connected:
+                    print(f"Connected to {address}")
+                    name = client.name
+                    print(f"name is {client.name}")
+                    # Convert text payload to bytes
+
+                    if name.endswith("G_E8"):
+                        await g_e8(client)
+                    else:
+                        await g_e7(client)
                 else:
-                    await g_e7(client)
-                return True
-            else:
-                print(f"Failed to connect to {address}")
-                return False
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return False
+                    print(f"Failed to connect to {address}")
+
+                if connect_to_cam_wifi(wifi_id, password):
+                    process_images()
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
 
 import subprocess
 import time
@@ -278,9 +294,7 @@ def main():
     if args.ssid:
         drop_wifi(args.ssid)
 
-    if asyncio.run(run(args.bt_id, args.device_id)):
-        if connect_to_cam_wifi(args.wifi_id, args.password):
-            process_images()
+    asyncio.run(run(args.bt_id, args.device_id, args.wifi_id, args.password))
             
         
     if args.ssid:
