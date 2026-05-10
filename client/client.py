@@ -1,5 +1,4 @@
 #!/usr/bin/python
-import time
 import traceback
 import requests
 from requests.exceptions import HTTPError, ChunkedEncodingError
@@ -160,15 +159,50 @@ def connect_to_cam_wifi_macos_networksetup(device, password=None):
         # Try common camera WiFi patterns
         for cam_pattern in ["CAM", "CAM_WIFI", "TRAIL_CAM"]:
             if password:
-                cmd = f"networksetup -setairportnetwork en0 '{cam_pattern}' '{password}'"
+                cmd = f"sudo networksetup -setairportnetwork en0 '{cam_pattern}' '{password}'"
             else:
-                cmd = f"networksetup -setairportnetwork en0 '{cam_pattern}'"
+                cmd = f"sudo networksetup -setairportnetwork en0 '{cam_pattern}'"
             
             connect_result = run_command(cmd)
             
             if connect_result.returncode == 0:
                 print(f"Successfully connected to {cam_pattern}!")
+                time.sleep(5)
+                
+                # Check current WiFi connection
+                wifi_check = run_command("networksetup -getairportnetwork en0")
+                print(f"Current WiFi: {wifi_check.stdout.strip()}")
+                
+                # Check IP address
+                ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+                print(f"IP Address: {ip_check.stdout.strip()}")
+                
+                # If still no IP, wait longer and try again
+                if not ip_check.stdout.strip():
+                    print("No IP assigned yet, waiting longer...")
+                    time.sleep(10)
+                    ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+                    print(f"IP Address after wait: {ip_check.stdout.strip()}")
+                
+                # Try to ping the camera
+                ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+                if ping_result.returncode == 0:
+                    print("Camera is reachable!")
+                    print(f"Connection successful!")
+                else:
+                    print("Warning: Camera not reachable yet, waiting longer...")
+                    time.sleep(10)
+                    # Try ping again
+                    ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+                    if ping_result.returncode == 0:
+                        print("Camera is now reachable!")
+                    else:
+                        print("Still cannot reach camera")
+                print(f"WiFi should now be ready")
                 return True
+            else:
+                print(f"Connection attempt to {cam_pattern} failed: {connect_result.stderr}")
+                print(f"Return code: {connect_result.returncode}")
             
         time.sleep(5)
         retry += 1
@@ -210,7 +244,7 @@ def connect_to_cam_wifi_macos(device, password=None):
     while retry < 4:
         # Try to rescan for networks
         run_command(f"{airport_cmd} -z")
-        time.sleep(2)
+        time.sleep(3)
         
         # List available networks
         scan_result = run_command(f"{airport_cmd} -s")
@@ -218,7 +252,10 @@ def connect_to_cam_wifi_macos(device, password=None):
         if scan_result.returncode != 0:
             print(f"Error scanning Wi-Fi: {scan_result.stderr}")
             print(f"Stdout: {scan_result.stdout}")
-            return False
+            print(f"Retrying scan... (attempt {retry + 1}/4)")
+            retry += 1
+            time.sleep(3)
+            continue
         
         # Parse output to find networks starting with 'CAM'
         lines = scan_result.stdout.strip().split('\n')
@@ -231,6 +268,7 @@ def connect_to_cam_wifi_macos(device, password=None):
         if not target_ssid:
             print(f"No Wi-Fi network starting with 'CAM' was found (retry {retry}).")
             print(f"Available networks: {scan_result.stdout}")
+            time.sleep(3)
         else:
             break
         retry += 1
@@ -242,17 +280,50 @@ def connect_to_cam_wifi_macos(device, password=None):
     
     # Connect to the network using networksetup
     if password:
-        cmd = f"networksetup -setairportnetwork en0 '{target_ssid}' '{password}'"
+        cmd = f"sudo networksetup -setairportnetwork en0 '{target_ssid}' '{password}'"
     else:
-        cmd = f"networksetup -setairportnetwork en0 '{target_ssid}'"
+        cmd = f"sudo networksetup -setairportnetwork en0 '{target_ssid}'"
     
     connect_result = run_command(cmd)
     
     if connect_result.returncode == 0:
         print(f"Successfully connected to {target_ssid}!")
+        time.sleep(5)
+        
+        # Check current WiFi connection
+        wifi_check = run_command("networksetup -getairportnetwork en0")
+        print(f"Current WiFi: {wifi_check.stdout.strip()}")
+        
+        # Check IP address
+        ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+        print(f"IP Address: {ip_check.stdout.strip()}")
+        
+        # If still no IP, wait longer and try again
+        if not ip_check.stdout.strip():
+            print("No IP assigned yet, waiting longer...")
+            time.sleep(10)
+            ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+            print(f"IP Address after wait: {ip_check.stdout.strip()}")
+        
+        # Try to ping the camera
+        ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+        if ping_result.returncode == 0:
+            print("Camera is reachable!")
+            print(f"Connection successful!")
+        else:
+            print("Warning: Camera not reachable yet, waiting longer...")
+            time.sleep(10)
+            # Try ping again
+            ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+            if ping_result.returncode == 0:
+                print("Camera is now reachable!")
+            else:
+                print("Still cannot reach camera")
+        print(f"WiFi should now be ready")
         return True
     else:
         print(f"Failed to connect: {connect_result.stderr.strip()}")
+        print(f"Command was: {cmd}")
         return False
 
 def connect_to_cam_wifi(device, password=None):
@@ -343,11 +414,9 @@ def process_images():
 
     except HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
-        time.sleep(30)
     except Exception as err:
         print(f"An error occurred: {err}")
         print(traceback.print_exc())
-        time.sleep(30)
 
 def drop_wifi_linux(ssid):
     """Disconnect from WiFi on Linux."""
@@ -363,11 +432,12 @@ def drop_wifi_linux(ssid):
 
 def drop_wifi_macos(ssid):
     """Disconnect from WiFi on macOS by turning off Wi-Fi."""
-    cmd = "networksetup -setairportpower en0 off"
+    cmd = "sudo networksetup -setairportpower en0 off"
     connect_result = run_command(cmd)
 
     if connect_result.returncode == 0:
         print(f"Successfully dropped Wi-Fi connection!")
+        time.sleep(2)  # Give airport time to power down
         return True
     else:
         print(f"Failed to disconnect: {connect_result.stderr.strip()}")
@@ -394,11 +464,12 @@ def restore_wifi_linux(ssid, devid):
 
 def restore_wifi_macos(ssid, devid):
     """Reconnect to WiFi on macOS by turning on Wi-Fi."""
-    cmd = "networksetup -setairportpower en0 on"
+    cmd = "sudo networksetup -setairportpower en0 on"
     connect_result = run_command(cmd)
 
     if connect_result.returncode == 0:
         print(f"Successfully restored Wi-Fi connection!")
+        time.sleep(5)  # Give airport time to power up and scan
         return True
     else:
         print(f"Failed to connect: {connect_result.stderr.strip()}")
