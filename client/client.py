@@ -1,4 +1,4 @@
-x#!/usr/bin/python
+#!/usr/bin/python
 import time
 import traceback
 import requests
