@@ -162,12 +162,30 @@ def connect_to_cam_wifi_macos_networksetup(device, password=None):
             
             if connect_result.returncode == 0:
                 print(f"Successfully connected to {cam_pattern}!")
-                print(f"Waiting for WiFi and camera to be reachable...")
-                time.sleep(15)  # Give WiFi and camera time to stabilize
+                time.sleep(2)
+                
+                # Check current WiFi connection
+                wifi_check = run_command("networksetup -getairportnetwork en0")
+                print(f"Current WiFi: {wifi_check.stdout.strip()}")
+                
+                # Check IP address
+                ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+                print(f"IP Address: {ip_check.stdout.strip()}")
+                
+                # Try to ping the camera
+                ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+                if ping_result.returncode == 0:
+                    print("Camera is reachable!")
+                    print(f"Waiting additional time for stability...")
+                    time.sleep(5)
+                else:
+                    print("Warning: Camera not reachable yet, waiting longer...")
+                    time.sleep(10)
                 print(f"WiFi should now be ready")
                 return True
             else:
                 print(f"Connection attempt to {cam_pattern} failed: {connect_result.stderr}")
+                print(f"Return code: {connect_result.returncode}")
             
         time.sleep(5)
         retry += 1
@@ -248,8 +266,25 @@ def connect_to_cam_wifi_macos(device, password=None):
     
     if connect_result.returncode == 0:
         print(f"Successfully connected to {target_ssid}!")
-        print(f"Waiting for WiFi and camera to be reachable...")
-        time.sleep(15)  # Give WiFi and camera time to stabilize
+        time.sleep(2)
+        
+        # Check current WiFi connection
+        wifi_check = run_command("networksetup -getairportnetwork en0")
+        print(f"Current WiFi: {wifi_check.stdout.strip()}")
+        
+        # Check IP address
+        ip_check = run_command("ifconfig en0 | grep 'inet ' | awk '{print $2}'")
+        print(f"IP Address: {ip_check.stdout.strip()}")
+        
+        # Try to ping the camera
+        ping_result = run_command("ping -c 3 -W 2 192.168.8.1")
+        if ping_result.returncode == 0:
+            print("Camera is reachable!")
+            print(f"Waiting additional time for stability...")
+            time.sleep(5)
+        else:
+            print("Warning: Camera not reachable yet, waiting longer...")
+            time.sleep(10)
         print(f"WiFi should now be ready")
         return True
     else:
