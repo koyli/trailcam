@@ -220,7 +220,6 @@ def connect_to_cam_wifi_macos_networksetup(device, cam_mac, password=None):
                 print(f"Connection attempt to {cam_pattern} failed: {connect_result.stderr}")
                 print(f"Return code: {connect_result.returncode}")
             
-        time.sleep(5)
         retry += 1
     
     print("Failed to connect using networksetup method")
@@ -235,7 +234,6 @@ def connect_to_cam_wifi_macos(device, cam_mac, password=None):
     if wifi_power.returncode != 0:
         print(f"Warning: Could not turn on WiFi: {wifi_power.stderr}")
     time.sleep(5)
-    print("Scanning for Wi-Fi networks...")
     
     return connect_to_cam_wifi_macos_networksetup(device, cam_mac, password)
     
@@ -288,6 +286,7 @@ def process_images():
     
     try:
         # 1. Send the GET request
+        print(f"Sending {url}")
         response = requests.get(url)
         
         # 2. Check if the request was successful (status code 200)
@@ -298,6 +297,7 @@ def process_images():
         data = response.json()
 
         images = data["data"]
+        print(f"Received {url}; processing {len(images)} images")
         counter = 0
         for image in images:
             try:
@@ -309,18 +309,20 @@ def process_images():
                 filename = f'{camera}_{compressed_date}_{image_id}.{filetype}'
                 thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
                 
-                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 10)
+                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 30)
                 with open(thumbname, "wb") as f:
                     f.write(response.content)
-                response = requests.get(f'{file_url}{image_id}/{filetype}', timeout = 10)
+                response = requests.get(f'{file_url}{image_id}/{filetype}', timeout = 30, stream=True)
                 with open(filename, "wb") as f:
-                    f.write(response.content)
+                    for chunk in response.iter_content(1024):
+                        f.write(chunk)
                 cam_reset()
-                response = requests.get(f'{delete_url}{image_id}/{filetype}', timeout = 10)
+                response = requests.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
                 print(f'Received and deleted {filename}', flush=True)
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
                 print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
+                print(traceback.print_exc())
         # Example: If the JSON has a key named 'items'
         # for item in data.get('items', []):
         #     print(item)
