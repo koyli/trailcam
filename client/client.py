@@ -59,13 +59,11 @@ async def run(bt_local_id, address, wifi_id, password):
                     if is_macos():
                         check = run_command("system_profiler SPBluetoothDataType")
                         print(f"{check.stdout.strip()}")
-                        print(fr'{device.name}:\s+Address: (.+)$')
                         r = re.compile(fr'{device.name}:\s+Address: (.+)$', re.MULTILINE)
                         m = r.search(check.stdout)
                         if m is None:
-                            print("mac not found")
-                        else:
-                            print (m.group(1))
+                            print("Unable to read BT address - cannot find WiFi without it on OS/X")
+                            return
                         addr = m.group(1)
                     else:
                         addr = client.address
