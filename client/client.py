@@ -307,11 +307,11 @@ def process_images():
                 filetype = "JPG" if image_type == 1 else "MP4"
                 compressed_date = image_date.replace("-", "").replace(" ","").replace(":","")
                 filename = f'{camera}_{compressed_date}_{image_id}.{filetype}'
-                thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
+#                thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
                 
-                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 30)
-                with open(thumbname, "wb") as f:
-                    f.write(response.content)
+#                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 30)
+#                with open(thumbname, "wb") as f:
+#                    f.write(response.content)
                 response = requests.get(f'{file_url}{image_id}/{filetype}', timeout = 30, stream=True)
                 with open(filename, "wb") as f:
                     for chunk in response.iter_content(1024):
