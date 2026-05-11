@@ -322,7 +322,7 @@ def process_images():
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
                 print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
-                print(traceback.print_exc())
+
         # Example: If the JSON has a key named 'items'
         # for item in data.get('items', []):
         #     print(item)
