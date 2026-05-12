@@ -36,6 +36,7 @@ async def g_e8(client):
     print("Payload sent successfully.")
 
 async def scan(bt_local_id):
+    print("Scanning bluetooth")
     devices = await BleakScanner.discover(bluez = {"adapter" : bt_local_id}, timeout = 30)
     print(f"\nFound {len(devices)} devices:")
     print("-" * 40)
@@ -81,7 +82,11 @@ async def run(bt_local_id, address, wifi_id, password):
                     print(f"Failed to connect to {address}")
 
                 if connect_to_cam_wifi(wifi_id, addr, password):
-                    process_images()
+                    session = requests.Session()
+                    adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
+                    session.mount('http://', adapter)
+                    session.mount('http://', requests.adapters.HTTPAdapter(max_retries=requests.adapters.Retry(total=5, backoff_factor=.1))) # add this as chunked responses are quite unreliable with the device
+                    process_images(session)
 
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -249,45 +254,33 @@ def connect_to_cam_wifi(device, cam_mac, password=None):
 base_url = "http://192.168.8.1:8080"
 
 
-def cam_reset():
+def cam_reset(session):
     reset_url = base_url + "/cmd/standby/reset"
-    try:
-        response = requests.get(reset_url)
-        data = response.json()
-        
-    except HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-    except Exception as err:
-        print(f"An error occurred: {err}")
-        print(traceback.print_exc())
+    response = session.get(reset_url)
+    data = response.json()
     
-def get_cam_id():
+def get_cam_id(session):
     info_url = base_url + "/cmd/getSetting"
-    try:
-        response = requests.get(info_url)
-        data = response.json()
-        return data["data"]["camera_name"]
-    except HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-    except Exception as err:
-        print(f"An error occurred: {err}")
-        print(traceback.print_exc())
+    response = session.get(info_url)
+    data = response.json()
+    print(data)
+    return data["data"]["camera_name"]
         
     
     
-def process_images():
+def process_images(session):
     url = base_url + "/list/detail/backward/900000/60"
     thumb_url = base_url + "/thumb/"
     file_url = base_url + "/file/"
     delete_url = base_url + "/cmd/delete/"
 
-    cam_reset()
-    camera = get_cam_id()
+    cam_reset(session)
+    camera = get_cam_id(session)
     
     try:
         # 1. Send the GET request
         print(f"Sending {url}")
-        response = requests.get(url)
+        response = session.get(url)
         
         # 2. Check if the request was successful (status code 200)
         # This raises an exception for 4XX or 5XX errors
@@ -312,12 +305,13 @@ def process_images():
 #                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 30)
 #                with open(thumbname, "wb") as f:
 #                    f.write(response.content)
-                response = requests.get(f'{file_url}{image_id}/{filetype}', timeout = 30, stream=True)
+                url = f'{file_url}{image_id}/{filetype}'
+                print(url)
+                response = session.get(url, stream=True)
                 with open(filename, "wb") as f:
-                    for chunk in response.iter_content(1024):
+                    for chunk in response.iter_content(None):
                         f.write(chunk)
-                cam_reset()
-                response = requests.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
+                response = session.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
                 print(f'Received and deleted {filename}', flush=True)
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
@@ -348,9 +342,9 @@ def drop_wifi_linux(ssid):
 
 def drop_wifi_macos(ssid):
     """Disconnect from WiFi on macOS by turning off Wi-Fi."""
-    cmd = "sudo networksetup -setairportpower en0 off"
+    cmd = "sudo networksetup -setairportpower en0 off" 
     connect_result = run_command(cmd)
-
+    
     if connect_result.returncode == 0:
         print(f"Successfully dropped Wi-Fi connection!")
         time.sleep(2)  # Give airport time to power down
@@ -359,6 +353,8 @@ def drop_wifi_macos(ssid):
         print(f"Failed to disconnect: {connect_result.stderr.strip()}")
         return False
 
+    return
+    
 def drop_wifi(ssid):
     """Platform-agnostic function to disconnect from WiFi."""
     if is_macos():
