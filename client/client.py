@@ -285,7 +285,7 @@ def download_with_wget(url : str, f : str) -> bool:
         return False
     
 
-def download_with_resume(sess: requests.Session, url: str, f : File):
+def download_with_resume(sess: requests.Session, url: str, f):
     bytes_read = 0
     expected_length = None
     for attempt in range(10):
