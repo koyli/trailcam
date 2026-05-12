@@ -354,8 +354,9 @@ def process_images(session):
                 url = f'{file_url}{image_id}/{filetype}'
                 print(url)
                 response = session.get(url, stream=True)
-                with open(filename, "wb") as f:
-                    download_with_resume(session, url, f)
+#                with open(filename, "wb") as f:
+#                    download_with_resume(session, url, f) 
+                download_with_wget(url, filename) 
                 response = session.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
                 print(f'Received and deleted {filename}', flush=True)
                 counter += 1
