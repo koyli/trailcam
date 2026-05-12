@@ -2,7 +2,7 @@
 import traceback
 import re
 import requests
-from requests.exceptions import HTTPError, ChunkedEncodingError
+from requests.exceptions import HTTPError, ChunkedEncodingError, ConnectionError
 import argparse
 
 
@@ -266,7 +266,57 @@ def get_cam_id(session):
     print(data)
     return data["data"]["camera_name"]
         
+
+# Source - https://stackoverflow.com/a/77873699
+# Posted by AKX, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-05-12, License - CC BY-SA 4.0
+
+import requests
+
+def download_with_wget(url : str, f : str) -> bool:
+    cmd = f"wget -O {f} {url}"
+
+    result = run_command(cmd)
+
+    if result.returncode == 0:
+        print(f"Successfully downloaded {url}")
+        return True
+    else:
+        return False
     
+
+def download_with_resume(sess: requests.Session, url: str, f : File):
+    bytes_read = 0
+    expected_length = None
+    for attempt in range(10):
+        if bytes_read:
+            headers = {"Range": f"bytes={bytes_read}-"}
+            expected_status = 206
+        else:
+            headers = {}
+            expected_status = 200
+        print(f"{url}: got {bytes_read} bytes...")
+        resp = sess.get(url, stream=True, headers=headers, timeout=10)
+        resp.raise_for_status()
+        if resp.status_code != expected_status:
+            raise ValueError(f"Unexpected status code: {resp.status_code}")
+
+        try:
+            for chunk in resp.iter_content(chunk_size=None):
+                f.write(chunk)
+                bytes_read += len(chunk)
+        except requests.exceptions.ChunkedEncodingError:
+            pass
+        except requests.exceptions.ConnectionError:
+            pass
+
+    if len(data) != expected_length:
+        raise ValueError(f"Expected {expected_length} bytes, got {len(data)}")
+
+
+
+
+  
     
 def process_images(session):
     url = base_url + "/list/detail/backward/900000/60"
@@ -294,23 +344,18 @@ def process_images(session):
         counter = 0
         for image in images:
             try:
+                cam_reset(session)
                 image_id = image["id"]
                 image_date = image["date"]
                 image_type = image["type"]
                 filetype = "JPG" if image_type == 1 else "MP4"
                 compressed_date = image_date.replace("-", "").replace(" ","").replace(":","")
                 filename = f'{camera}_{compressed_date}_{image_id}.{filetype}'
-#                thumbname = f'{camera}_{compressed_date}_{image_id}_thumb.{filetype}'
-                
-#                response = requests.get(f'{thumb_url}{image_id}/{filetype}', timeout = 30)
-#                with open(thumbname, "wb") as f:
-#                    f.write(response.content)
                 url = f'{file_url}{image_id}/{filetype}'
                 print(url)
                 response = session.get(url, stream=True)
                 with open(filename, "wb") as f:
-                    for chunk in response.iter_content(None):
-                        f.write(chunk)
+                    download_with_resume(session, url, f)
                 response = session.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
                 print(f'Received and deleted {filename}', flush=True)
                 counter += 1
@@ -344,6 +389,9 @@ def drop_wifi_macos(ssid):
     """Disconnect from WiFi on macOS by turning off Wi-Fi."""
     cmd = "sudo networksetup -setairportpower en0 off" 
     connect_result = run_command(cmd)
+    """Disconnect from WiFi on macOS by making current not preferred."""
+    cmd = f'sudo networksetup -removepreferredwirelessnetwork en0 {ssid}'
+    connect_result = run_command(cmd)
     
     if connect_result.returncode == 0:
         print(f"Successfully dropped Wi-Fi connection!")
@@ -376,7 +424,9 @@ def restore_wifi_linux(ssid, devid):
 
 def restore_wifi_macos(ssid, devid):
     """Reconnect to WiFi on macOS by turning on Wi-Fi."""
-    cmd = "sudo networksetup -setairportpower en0 on"
+    #    cmd = "sudo networksetup -setairportpower en0 on" 
+    cmd = f'sudo networksetup -addpreferredwirelessnetworkatindex en0 {ssid} 1 wpa'
+
     connect_result = run_command(cmd)
 
     if connect_result.returncode == 0:
