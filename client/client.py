@@ -55,7 +55,10 @@ async def run(bt_local_id, address, wifi_id, password):
     devices = filter(lambda x : (x.name and x.name.startswith(address)) or x.address.startswith(address), devices)
     for device in devices:
         try:
-            async with BleakClient(device, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
+            fresh_handle = await BleakScanner.find_device_by_filter(
+                lamba x : x.address.lower() == device.address.lower(), timeout=20.0)
+
+            async with BleakClient(fresh_handle, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
                 if client.is_connected:
                     if is_macos():
                         check = run_command("system_profiler SPBluetoothDataType")
@@ -90,7 +93,8 @@ async def run(bt_local_id, address, wifi_id, password):
 
         except Exception as e:
             print(f"An error occurred: {e}")
-
+            print(traceback.print_exc())
+        
 
 import subprocess
 import time
