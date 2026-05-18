@@ -56,7 +56,7 @@ async def run(bt_local_id, address, wifi_id, password):
     for device in devices:
         try:
             fresh_handle = await BleakScanner.find_device_by_filter(
-                lamba x : x.address.lower() == device.address.lower(), timeout=20.0)
+                lambda x : x.address.lower() == device.address.lower(), timeout=20.0)
 
             async with BleakClient(fresh_handle, bluez = {"adapter" : bt_local_id}, timeout=30.0) as client:
                 if client.is_connected:
