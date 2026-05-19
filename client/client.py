@@ -9,7 +9,7 @@ import argparse
 import asyncio
 import sys
 import platform
-from bleak import BleakClient, BleakScanner
+from bleak import BleakClient, BleakScanner, BleakCharacteristicNotFoundError
 
 # Define the UUIDs based on your service/characteristic shorthand
 # Note: Full 128-bit UUIDs are often required if these are custom
@@ -17,15 +17,17 @@ from bleak import BleakClient, BleakScanner
 
 
 async def g_e7(client):
-    payload = "TCWAKEUP".encode('utf-8')
-    CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
-                
-    print(f"Sending payload to {CHAR_UUID}...")
-    # write_gatt_char sends data to the device
-    await client.write_gatt_char(CHAR_UUID, payload)
-    
-    print("Payload sent successfully.")
-
+    try:
+        payload = "TCWAKEUP".encode('utf-8')
+        CHAR_UUID    = "0000ffb1-0000-1000-8000-00805f9b34fb"
+        
+        print(f"Sending payload to {CHAR_UUID}...")
+        # write_gatt_char sends data to the device
+        await client.write_gatt_char(CHAR_UUID, payload)
+        print("Payload sent successfully.")
+    except BleakCharacteristicNotFoundError as e:
+        await g_e8(client)
+        
 async def g_e8(client):
     payload = "AT+WAKEPULSE=10\r\n".encode('utf-8')
     CHAR_UUID    = "6e400004-b5a3-f393-e0a9-e50e24dcca9e"
@@ -92,7 +94,8 @@ async def run(bt_local_id, address, wifi_id, password):
                     adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
                     session.mount('http://', adapter)
                     session.mount('http://', requests.adapters.HTTPAdapter(max_retries=requests.adapters.Retry(total=5, backoff_factor=.1))) # add this as chunked responses are quite unreliable with the device
-                    process_images(session)
+                    while process_images(session) > 0:
+                        pass
 
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -374,12 +377,14 @@ def process_images(session):
         # for item in data.get('items', []):
         #     print(item)
         print(f'Total {counter} images/movies saved')
-
+        return counter
     except HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
+        return -1
     except Exception as err:
         print(f"An error occurred: {err}")
         print(traceback.print_exc())
+        return -1
 
 def drop_wifi_linux(ssid):
     """Disconnect from WiFi on Linux."""
