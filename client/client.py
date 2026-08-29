@@ -365,10 +365,10 @@ def process_images(session):
                 print(url)
                 response = session.get(url, stream=True)
 #                with open(filename, "wb") as f:
-#                    download_with_resume(session, url, f) 
-                download_with_wget(url, filename) 
-                response = session.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
-                print(f'Received and deleted {filename}', flush=True)
+#                    download_with_resume(session, url, f)
+                if download_with_wget(url, filename):
+                  response = session.get(f'{delete_url}{image_id}/{filetype}', timeout = 30)
+                  print(f'Received and deleted {filename}', flush=True)
                 counter += 1
             except ChunkedEncodingError as chunk_err: # can get 0 bytes read - carry on, we can try again..
                 print(f"A chunked encoding error occurred - carrying on but a file was not deleted: try again")
